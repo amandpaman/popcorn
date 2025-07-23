@@ -1,37 +1,50 @@
 import streamlit as st
-from datetime import datetime
+from urllib.parse import urlencode, parse_qs, urlparse
+import datetime
 
-# ---------------------- Page Config ----------------------
+# Set page config
 st.set_page_config(page_title="Popcorn 🍿", layout="wide")
 
-# ---------------------- Safe Rerun ----------------------
-if "trigger_rerun" in st.session_state and st.session_state.trigger_rerun:
-    st.session_state.trigger_rerun = False
-    st.experimental_rerun()
+# Initialize session state
+if "rooms" not in st.session_state:
+    st.session_state.rooms = {}
 
-# ---------------------- Style ----------------------
+# --------------------- Helper to get or set room ---------------------
+def get_room():
+    query_params = st.experimental_get_query_params()
+    room = query_params.get("room", [None])[0]
+    return room
+
+def set_room(room_name):
+    st.experimental_set_query_params(room=room_name)
+
+# ---------------------- Styling ----------------------
 st.markdown("""
     <style>
     body {
         background: linear-gradient(to right, #1e3c72, #2a5298);
         color: white;
     }
+    .main {
+        background-color: rgba(0,0,0,0);
+        color: white;
+    }
     .chat-box {
         height: 300px;
         overflow-y: auto;
-        background-color: #111;
+        background-color: #222;
         border-radius: 10px;
         padding: 10px;
         color: white;
-        border: 1px solid #444;
     }
     .message {
-        padding: 6px 10px;
-        margin: 4px 0;
+        padding: 5px 10px;
+        margin: 5px 0;
         border-radius: 5px;
     }
     .self {
         background-color: #4caf50;
+        align-self: flex-end;
     }
     .other {
         background-color: #2196f3;
@@ -39,84 +52,66 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# ---------------------- Initialize Session State ----------------------
-if "rooms" not in st.session_state:
-    st.session_state.rooms = {}
+st.title("🎬 Popcorn – Watch Together, From Anywhere!")
 
-# ---------------------- Header ----------------------
-st.title("🍿 Popcorn - Watch Together With Friends")
-st.write("Create or join a room to watch YouTube videos together and chat live!")
+# ---------------------- Room Selection / Creation ----------------------
+room = get_room()
+if not room:
+    st.subheader("🎉 Create or Join a Room")
+    with st.form("room_form"):
+        new_room = st.text_input("Enter a room name (share it with friends!)", "")
+        submitted = st.form_submit_button("Join Room")
+        if submitted and new_room.strip():
+            set_room(new_room.strip())
+            st.rerun()
+else:
+    st.success(f"You're in room: **{room}**")
 
-# ---------------------- Join or Create Room ----------------------
-st.subheader("🎟️ Join a Movie Room")
+    # Initialize room messages and video
+    if room not in st.session_state.rooms:
+        st.session_state.rooms[room] = {
+            "messages": [],
+            "video": ""
+        }
 
-with st.form("room_form"):
-    room_code = st.text_input("Enter a Room Name (e.g., friends-night)").strip().lower()
-    your_name = st.text_input("Your Name").strip()
-    join_button = st.form_submit_button("Join Room")
-
-if join_button:
-    if room_code and your_name:
-        st.session_state["current_room"] = room_code
-        st.session_state["user_name"] = your_name
-        if room_code not in st.session_state.rooms:
-            st.session_state.rooms[room_code] = {
-                "video_url": "",
-                "chat": []
-            }
-        st.session_state["trigger_rerun"] = True
-    else:
-        st.warning("Please enter both room name and your name.")
-
-# ---------------------- Room Interface ----------------------
-if "current_room" in st.session_state and "user_name" in st.session_state:
-    room = st.session_state.current_room
-    user = st.session_state.user_name
     room_data = st.session_state.rooms[room]
 
-    st.markdown(f"### 🎬 Room: `{room}` | 👤 You: `{user}`")
+    # ---------------------- Movie Sync Section ----------------------
+    st.subheader("📽️ Shared YouTube Playback")
+    with st.form("video_form"):
+        new_url = st.text_input("Enter YouTube URL to share", value=room_data["video"])
+        play_button = st.form_submit_button("Play Video")
+        if play_button:
+            room_data["video"] = new_url
 
-    # Video URL input (only show to first user or allow edit)
-    with st.expander("📺 Set or Change YouTube Video Link"):
-        new_url = st.text_input("Paste YouTube video URL", value=room_data["video_url"])
-        if st.button("Update Video"):
-            st.session_state.rooms[room]["video_url"] = new_url
-            st.success("Video URL updated!")
+    if room_data["video"]:
+        st.video(room_data["video"])
 
-    # Show YouTube Video
-    if room_data["video_url"]:
-        st.video(room_data["video_url"])
-    else:
-        st.info("Paste a YouTube link above to start the movie.")
-
-    # Live Chat
+    # ---------------------- Live Chat ----------------------
     st.subheader("💬 Chat with Friends")
-    chat_area = st.container()
-    with chat_area:
-        st.markdown('<div class="chat-box">', unsafe_allow_html=True)
-        for msg in room_data["chat"]:
-            css_class = "self" if msg["sender"] == user else "other"
-            sender = "You" if msg["sender"] == user else msg["sender"]
-            st.markdown(
-                f'<div class="message {css_class}"><strong>{sender}</strong>: {msg["message"]}</div>',
-                unsafe_allow_html=True
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
-
     with st.form("chat_form", clear_on_submit=True):
-        chat_input = st.text_input("Type your message...")
-        send_btn = st.form_submit_button("Send")
-        if send_btn and chat_input:
-            timestamp = datetime.now().strftime("%H:%M")
-            st.session_state.rooms[room]["chat"].append({
-                "sender": user,
-                "message": chat_input,
-                "time": timestamp
-            })
-            st.experimental_rerun()
+        username = st.text_input("Your Name", key="name_" + room)
+        message = st.text_input("Type your message", key="message_" + room)
+        send_button = st.form_submit_button("Send")
+        if send_button and message and username:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            room_data["messages"].append((username, message, timestamp))
 
-    # Leave room option
-    if st.button("🚪 Leave Room"):
-        del st.session_state["current_room"]
-        del st.session_state["user_name"]
-        st.experimental_rerun()
+    # Chat history
+    st.markdown('<div class="chat-box">', unsafe_allow_html=True)
+    for sender, msg, time in room_data["messages"]:
+        bubble_class = "self" if sender == username else "other"
+        st.markdown(f'''
+            <div class="message {bubble_class}">
+                <strong>{sender}</strong> <small>{time}</small><br>{msg}
+            </div>
+        ''', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---------------------- Footer ----------------------
+    st.markdown("---")
+    st.markdown("🔗 Share this URL with friends to join the same room!")
+    st.code(f"{st.get_url()}?room={room}")
+
+    st.markdown("Made with ❤️ for movie nights 🍿")
+
