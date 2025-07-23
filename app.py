@@ -1,19 +1,13 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import datetime
-import random
 
 st.set_page_config(page_title="Popcorn 🍿", layout="wide")
 
-# ---------------------- UI Styling ----------------------
+# ---------------------- Styling ----------------------
 st.markdown("""
     <style>
     body {
         background: linear-gradient(to right, #1e3c72, #2a5298);
-        color: white;
-    }
-    .main {
-        background-color: rgba(0,0,0,0);
         color: white;
     }
     .chat-box {
@@ -31,7 +25,6 @@ st.markdown("""
     }
     .self {
         background-color: #4caf50;
-        align-self: flex-end;
     }
     .other {
         background-color: #2196f3;
@@ -39,47 +32,64 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🎬 Popcorn – Watch Together, From Anywhere!")
+# ---------------------- Session State Setup ----------------------
+if "rooms" not in st.session_state:
+    st.session_state.rooms = {}
 
-# ---------------------- Movie Sync Section ----------------------
-st.subheader("📽️ Shared Movie Playback")
+# ---------------------- Header ----------------------
+st.title("🎬 Popcorn – Watch Together in Rooms")
 
-movie_url = st.text_input("Enter public movie URL (YouTube, etc.)")
-if movie_url:
-    st.video(movie_url)
+# ---------------------- Join or Create Room ----------------------
+st.subheader("🎟️ Join a Movie Room")
 
-# ---------------------- Screen Sharing Instructions ----------------------
-st.subheader("🖥️ Want to Share Your Screen?")
-with st.expander("How to share your screen with friends"):
-    st.markdown("""
-    If you’re playing a movie locally (VLC, Netflix, etc.), follow these steps:
-    
-    **🟢 Use Google Meet / Zoom (Free)**  
-    1. Open [meet.google.com](https://meet.google.com) or [zoom.us](https://zoom.us)
-    2. Start a meeting.
-    3. Click **Present Now** or **Share Screen**.
-    4. Share **your entire screen** (not just a tab).
-    5. Send the meeting link to your friends.
-    
-    They'll watch the movie through your screen share!
-    """)
+with st.form("room_form"):
+    room_code = st.text_input("Enter a Room Name (e.g., friends-night)").strip().lower()
+    your_name = st.text_input("Your Name").strip()
+    join_button = st.form_submit_button("Join Room")
 
-# ---------------------- Real-time Chat ----------------------
-st.subheader("💬 Live Chat Room")
+if join_button:
+    if room_code and your_name:
+        st.session_state["current_room"] = room_code
+        st.session_state["user_name"] = your_name
+        if room_code not in st.session_state.rooms:
+            st.session_state.rooms[room_code] = {
+                "video_url": "",
+                "chat": []
+            }
+        st.experimental_rerun()
+    else:
+        st.warning("Please enter both room name and your name.")
 
-with st.form("chat_form", clear_on_submit=True):
-    username = st.text_input("Your Name", key="name")
-    message = st.text_input("Type your message", key="message")
-    submitted = st.form_submit_button("Send")
-    if submitted and message and username:
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        st.session_state.setdefault("messages", []).append((username, message, timestamp))
+# ---------------------- Room View ----------------------
+if "current_room" in st.session_state and "user_name" in st.session_state:
+    room = st.session_state["current_room"]
+    user = st.session_state["user_name"]
+    room_data = st.session_state.rooms[room]
 
-# Display messages
-if "messages" in st.session_state:
+    st.success(f"🎉 Joined Room: `{room}` as `{user}`")
+
+    st.markdown("## 🎥 Shared YouTube Video")
+
+    new_video = st.text_input("Paste a YouTube link to share in room", value=room_data["video_url"])
+    if new_video != room_data["video_url"]:
+        room_data["video_url"] = new_video
+
+    if room_data["video_url"]:
+        st.video(room_data["video_url"])
+
+    st.markdown("## 💬 Group Chat")
+
+    with st.form("chat_form", clear_on_submit=True):
+        message = st.text_input("Type a message")
+        send = st.form_submit_button("Send")
+        if send and message:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            room_data["chat"].append((user, message, timestamp))
+
+    # Display chat messages
     st.markdown('<div class="chat-box">', unsafe_allow_html=True)
-    for sender, msg, time in st.session_state["messages"]:
-        bubble_class = "self" if sender == username else "other"
+    for sender, msg, time in room_data["chat"][-100:]:
+        bubble_class = "self" if sender == user else "other"
         st.markdown(f'''
             <div class="message {bubble_class}">
                 <strong>{sender}</strong> <small>{time}</small><br>{msg}
@@ -87,7 +97,7 @@ if "messages" in st.session_state:
         ''', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------------- Footer ----------------------
-st.markdown("---")
-st.markdown("Made with ❤️ by friends for movie nights 🍿")
-
+    if st.button("🚪 Leave Room"):
+        del st.session_state["current_room"]
+        del st.session_state["user_name"]
+        st.experimental_rerun()
