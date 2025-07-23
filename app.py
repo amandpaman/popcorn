@@ -1,98 +1,93 @@
 import streamlit as st
-from datetime import datetime
+import streamlit.components.v1 as components
+import datetime
 import random
 
-# --- Streamlit Page Config ---
-st.set_page_config(page_title="MovieMate", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="Popcorn 🍿", layout="wide")
 
-# --- Colorful Background & Style ---
+# ---------------------- UI Styling ----------------------
 st.markdown("""
     <style>
     body {
-        background: linear-gradient(135deg, #141e30, #243b55);
+        background: linear-gradient(to right, #1e3c72, #2a5298);
         color: white;
     }
-    .stTextInput>div>div>input {
-        background-color: #f0f0f0;
-        color: black;
+    .main {
+        background-color: rgba(0,0,0,0);
+        color: white;
     }
-    .stChatMessage {
-        background-color: #1f2937 !important;
+    .chat-box {
+        height: 300px;
+        overflow-y: auto;
+        background-color: #222;
+        border-radius: 10px;
+        padding: 10px;
+        color: white;
+    }
+    .message {
+        padding: 5px 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+    }
+    .self {
+        background-color: #4caf50;
+        align-self: flex-end;
+    }
+    .other {
+        background-color: #2196f3;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- Session Setup ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+st.title("🎬 Popcorn – Watch Together, From Anywhere!")
 
-if "room_code" not in st.session_state:
-    st.session_state.room_code = ""
+# ---------------------- Movie Sync Section ----------------------
+st.subheader("📽️ Shared Movie Playback")
 
-# --- App Title ---
-st.markdown("<h1 style='text-align: center; color: #FFD700;'>🎥 MovieMate – Watch Together, Chat & Call</h1>", unsafe_allow_html=True)
+movie_url = st.text_input("Enter public movie URL (YouTube, etc.)")
+if movie_url:
+    st.video(movie_url)
 
-# --- Room Code Section ---
-col1, col2 = st.columns([1, 2])
-with col1:
-    st.markdown("### Create or Join Room")
-    room_code_input = st.text_input("Enter Room Code", value=st.session_state.room_code or f"room-{random.randint(1000,9999)}")
-    username = st.text_input("Your Name", value="Guest")
+# ---------------------- Screen Sharing Instructions ----------------------
+st.subheader("🖥️ Want to Share Your Screen?")
+with st.expander("How to share your screen with friends"):
+    st.markdown("""
+    If you’re playing a movie locally (VLC, Netflix, etc.), follow these steps:
+    
+    **🟢 Use Google Meet / Zoom (Free)**  
+    1. Open [meet.google.com](https://meet.google.com) or [zoom.us](https://zoom.us)
+    2. Start a meeting.
+    3. Click **Present Now** or **Share Screen**.
+    4. Share **your entire screen** (not just a tab).
+    5. Send the meeting link to your friends.
+    
+    They'll watch the movie through your screen share!
+    """)
 
-    if st.button("Join Room"):
-        st.session_state.room_code = room_code_input.strip()
-        st.success(f"Joined room `{st.session_state.room_code}` as **{username}**")
+# ---------------------- Real-time Chat ----------------------
+st.subheader("💬 Live Chat Room")
 
-with col2:
-    st.markdown("### Screen & Video Chat Instructions")
-    st.info("🔗 Share your screen using the embedded video below.\n\nInvite your friends to join the same room code!")
+with st.form("chat_form", clear_on_submit=True):
+    username = st.text_input("Your Name", key="name")
+    message = st.text_input("Type your message", key="message")
+    submitted = st.form_submit_button("Send")
+    if submitted and message and username:
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        st.session_state.setdefault("messages", []).append((username, message, timestamp))
 
-# --- Display Room Info ---
-if st.session_state.room_code:
-    st.markdown(f"### 🧾 Room: `{st.session_state.room_code}` | 👤 You: **{username}**")
+# Display messages
+if "messages" in st.session_state:
+    st.markdown('<div class="chat-box">', unsafe_allow_html=True)
+    for sender, msg, time in st.session_state["messages"]:
+        bubble_class = "self" if sender == username else "other"
+        st.markdown(f'''
+            <div class="message {bubble_class}">
+                <strong>{sender}</strong> <small>{time}</small><br>{msg}
+            </div>
+        ''', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- Embedded Jitsi Video Chat ---
-    st.markdown("## 📹 Video Chat Room")
-    jitsi_room = st.session_state.room_code.replace(" ", "-")  # safe room code
-    st.markdown(f"""
-    <iframe src="https://meet.jit.si/{jitsi_room}"
-        allow="camera; microphone; fullscreen; display-capture"
-        style="width: 100%; height: 500px; border: 2px solid #FFD700; border-radius: 12px; margin-bottom: 30px;"></iframe>
-    """, unsafe_allow_html=True)
+# ---------------------- Footer ----------------------
+st.markdown("---")
+st.markdown("Made with ❤️ by friends for movie nights 🍿")
 
-    # --- Chat System ---
-    st.markdown("### 💬 Group Chat")
-    chat_placeholder = st.container()
-
-    with st.form("chat_form", clear_on_submit=True):
-        user_message = st.text_input("Type your message...")
-        send_button = st.form_submit_button("Send")
-
-        if send_button and user_message:
-            timestamp = datetime.now().strftime("%H:%M")
-            st.session_state.messages.append({
-                "user": username,
-                "text": user_message,
-                "time": timestamp
-            })
-
-    # --- Display Chat Messages ---
-    with chat_placeholder:
-        for msg in st.session_state.messages:
-            st.markdown(
-                f"<div style='background-color:#374151;padding:10px;border-radius:10px;margin:5px 0;'>"
-                f"<strong style='color:#FFD700;'>{msg['user']}</strong> <span style='font-size:12px;color:gray;'>({msg['time']})</span><br>"
-                f"{msg['text']}</div>",
-                unsafe_allow_html=True
-            )
-
-    st.markdown("---")
-
-    # --- Start Movie Button (notifies others) ---
-    if st.button("🎬 Movie Started! Notify Everyone"):
-        st.session_state.messages.append({
-            "user": "System",
-            "text": f"🎬 {username} started the movie!",
-            "time": datetime.now().strftime("%H:%M")
-        })
-        st.experimental_rerun()
